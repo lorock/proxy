@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/qjw/proxy/utils"
+	"github.com/lorock/proxy/utils"
 )
 
+// Config Config
 type Config struct {
 	Bind string `json:"bind" binding:"required"` // 绑定的本地主机
 	Port uint16 `json:"port" binding:"required"` // 绑定的本地端口

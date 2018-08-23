@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/qjw/proxy/utils"
+	"github.com/lorock/proxy/utils"
 )
 
+// Network Network
 type Network struct {
 	ServerHost string `json:"server_host" binding:"required"` // 服务器域名/IP
 	ServerPort uint16 `json:"server_port" binding:"required"` // 服务器端口
@@ -12,10 +13,12 @@ type Network struct {
 	Topic      string `json:"topic"`                          // 请求类别
 }
 
+// Config Config
 type Config struct {
 	Networks []*Network `json:"networks"`
 }
 
+// defaultConfig defaultConfig
 func defaultConfig() *Config {
 	return &Config{
 		Networks: []*Network{

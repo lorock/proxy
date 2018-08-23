@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/qjw/proxy/utils"
+	"github.com/lorock/proxy/utils"
 )
 
 type Network struct {

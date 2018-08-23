@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qjw/proxy/msg"
-	"github.com/qjw/proxy/utils"
+	"github.com/lorock/proxy/msg"
+	"github.com/lorock/proxy/utils"
 )
 
 var (
@@ -25,17 +25,17 @@ type connection struct {
 	network      *Network
 }
 
-func (this *connection) loop() {
-	defer this.Shutdown()
+func (AbaoSTR *connection) loop() {
+	defer AbaoSTR.Shutdown()
 
-	if this.cli == nil || this.svr != nil {
+	if AbaoSTR.cli == nil || AbaoSTR.svr != nil {
 		panic("invalid connection")
 	}
-	defer this.loopShutdown.Complete()
-	defer this.cli.Close()
+	defer AbaoSTR.loopShutdown.Complete()
+	defer AbaoSTR.cli.Close()
 
 	// 等待就绪
-	m, tp, err := msg.ReadMsg(this.cli)
+	m, tp, err := msg.ReadMsg(AbaoSTR.cli)
 	if err != nil {
 		fmt.Printf("read message error [%s]\n", err.Error())
 		return
@@ -51,7 +51,7 @@ func (this *connection) loop() {
 		fmt.Print("invalid OutRequest type\n")
 		return
 	}
-	if req.Type != this.network.Topic {
+	if req.Type != AbaoSTR.network.Topic {
 		fmt.Printf("invalid Topic %s\n", req.Type)
 		return
 	}
@@ -65,52 +65,52 @@ func (this *connection) loop() {
 	// 收到请求之后，先连接服务器，确定之后再说
 	svrConn, err := net.Dial(
 		"tcp",
-		fmt.Sprintf("%s:%d", this.network.BackendHost, this.network.BackendPort),
+		fmt.Sprintf("%s:%d", AbaoSTR.network.BackendHost, AbaoSTR.network.BackendPort),
 	)
 	if err != nil {
 		fmt.Println("Error connecting:", err)
 		initMsg.Message = err.Error()
-		msg.WriteMsg(this.cli, initMsg)
+		msg.WriteMsg(AbaoSTR.cli, initMsg)
 		return
 	}
 	defer svrConn.Close()
 	tcpConn, _ := svrConn.(*net.TCPConn)
-	this.svr = tcpConn
+	AbaoSTR.svr = tcpConn
 
 	// 回复
-	msg.WriteMsg(this.cli, initMsg)
+	msg.WriteMsg(AbaoSTR.cli, initMsg)
 
 	// 开始数据交换
-	utils.Join(this.cli, this.svr, this)
+	utils.Join(AbaoSTR.cli, AbaoSTR.svr, AbaoSTR)
 }
 
-func (this connection) Shutdown() {
-	this.shutdown.Begin()
+func (AbaoSTR connection) Shutdown() {
+	AbaoSTR.shutdown.Begin()
 }
 
-func (this *connection) Run() {
+func (AbaoSTR *connection) Run() {
 	// 注册
-	this.c.Add(this)
-	defer this.c.Del(this)
+	AbaoSTR.c.Add(AbaoSTR)
+	defer AbaoSTR.c.Del(AbaoSTR)
 
-	go this.loop()
+	go AbaoSTR.loop()
 
 	// 等待关闭
-	this.shutdown.WaitBegin()
-	fmt.Printf("start to shutdown connection %p\n", this)
+	AbaoSTR.shutdown.WaitBegin()
+	fmt.Printf("start to shutdown connection %p\n", AbaoSTR)
 
 	// 关闭socket
-	this.cli.CloseRead()
-	this.cli.CloseWrite()
-	if this.svr != nil {
-		this.svr.CloseRead()
-		this.svr.CloseWrite()
+	AbaoSTR.cli.CloseRead()
+	AbaoSTR.cli.CloseWrite()
+	if AbaoSTR.svr != nil {
+		AbaoSTR.svr.CloseRead()
+		AbaoSTR.svr.CloseWrite()
 	}
 
 	// 等待loop结束
-	this.loopShutdown.WaitComplete()
+	AbaoSTR.loopShutdown.WaitComplete()
 	// 成功结束
-	this.shutdown.Complete()
+	AbaoSTR.shutdown.Complete()
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -126,9 +126,9 @@ func NewControl() *connectionMng {
 	}
 }
 
-func (this *connectionMng) NewConnection(cli *net.TCPConn, network *Network) {
+func (AbaoSTR *connectionMng) NewConnection(cli *net.TCPConn, network *Network) {
 	s := &connection{
-		c:            this,
+		c:            AbaoSTR,
 		cli:          cli,
 		shutdown:     utils.NewShutdown(true),
 		loopShutdown: utils.NewShutdown(false),
@@ -137,52 +137,52 @@ func (this *connectionMng) NewConnection(cli *net.TCPConn, network *Network) {
 	go s.Run()
 }
 
-func (this *connectionMng) Add(s *connection) {
+func (AbaoSTR *connectionMng) Add(s *connection) {
 	fmt.Printf("add connection %p\n", s)
-	this.Lock()
-	defer this.Unlock()
+	AbaoSTR.Lock()
+	defer AbaoSTR.Unlock()
 
-	if _, ok := this.sessions[s]; !ok {
-		this.sessions[s] = 0
+	if _, ok := AbaoSTR.sessions[s]; !ok {
+		AbaoSTR.sessions[s] = 0
 	} else {
 		panic("repeat add\n")
 	}
 }
 
-func (this *connectionMng) Del(s *connection) {
+func (AbaoSTR *connectionMng) Del(s *connection) {
 	fmt.Printf("del connection %p\n", s)
-	this.Lock()
-	defer this.Unlock()
+	AbaoSTR.Lock()
+	defer AbaoSTR.Unlock()
 
-	if _, ok := this.sessions[s]; ok {
-		delete(this.sessions, s)
+	if _, ok := AbaoSTR.sessions[s]; ok {
+		delete(AbaoSTR.sessions, s)
 	} else {
 		panic("empty del\n")
 	}
 }
 
-func (this connectionMng) Shutdown() {
+func (AbaoSTR connectionMng) Shutdown() {
 	fmt.Printf("start to shutdown connectionMng\n")
-	this.Lock()
+	AbaoSTR.Lock()
 
 	// 尝试关闭
-	for k, _ := range this.sessions {
+	for k, _ := range AbaoSTR.sessions {
 		k.Shutdown()
 	}
-	this.Unlock()
+	AbaoSTR.Unlock()
 }
 
-func (this connectionMng) WaitComplele() {
+func (AbaoSTR connectionMng) WaitComplele() {
 	for {
 		time.Sleep(time.Millisecond * 100)
-		this.Lock()
+		AbaoSTR.Lock()
 
-		if len(this.sessions) == 0 {
-			this.Unlock()
+		if len(AbaoSTR.sessions) == 0 {
+			AbaoSTR.Unlock()
 			break
 		}
 
-		this.Unlock()
+		AbaoSTR.Unlock()
 	}
 }
 
@@ -207,24 +207,24 @@ func NewSessionGroup() *sessionGroup {
 	}
 }
 
-func (this sessionGroup) Shutdown() {
-	this.abortShutdown.Begin()
+func (AbaoSTR sessionGroup) Shutdown() {
+	AbaoSTR.abortShutdown.Begin()
 }
 
-func (this sessionGroup) ShutdownAndRetry() {
-	this.shutdown.Begin()
+func (AbaoSTR sessionGroup) ShutdownAndRetry() {
+	AbaoSTR.shutdown.Begin()
 }
 
-func (this *sessionGroup) Run(network *Network) {
-	defer this.abortShutdown.Complete()
+func (AbaoSTR *sessionGroup) Run(network *Network) {
+	defer AbaoSTR.abortShutdown.Complete()
 
 	go func() {
-		this.abortShutdown.WaitBegin()
-		this.breakFlag = true
-		this.ShutdownAndRetry()
+		AbaoSTR.abortShutdown.WaitBegin()
+		AbaoSTR.breakFlag = true
+		AbaoSTR.ShutdownAndRetry()
 	}()
 
-	for !this.breakFlag {
+	for !AbaoSTR.breakFlag {
 		conn, err := net.Dial(
 			"tcp",
 			fmt.Sprintf("%s:%d", network.ServerHost, network.ServerPort),
@@ -235,50 +235,50 @@ func (this *sessionGroup) Run(network *Network) {
 			continue
 		}
 
-		this.lastPing = time.Now()
-		this.beatCh = make(chan int)
-		this.heartbeatShutdown = utils.NewShutdown(false)
-		this.shutdown = utils.NewShutdown(true)
-		this.c = NewControl()
+		AbaoSTR.lastPing = time.Now()
+		AbaoSTR.beatCh = make(chan int)
+		AbaoSTR.heartbeatShutdown = utils.NewShutdown(false)
+		AbaoSTR.shutdown = utils.NewShutdown(true)
+		AbaoSTR.c = NewControl()
 		tcpConn, _ := conn.(*net.TCPConn)
-		this.mng = tcpConn
+		AbaoSTR.mng = tcpConn
 
-		go this.loop(network)
-		go this.heartbeat()
+		go AbaoSTR.loop(network)
+		go AbaoSTR.heartbeat()
 		// 监控退出
-		this.manager()
+		AbaoSTR.manager()
 
-		if this.breakFlag {
+		if AbaoSTR.breakFlag {
 			break
 		}
 		time.Sleep(time.Millisecond * time.Duration(gConfig.RetryInterval))
-		fmt.Printf("retry connect in %p\n", this)
+		fmt.Printf("retry connect in %p\n", AbaoSTR)
 	}
 }
 
-func (this *sessionGroup) manager() {
-	this.shutdown.WaitBegin()
-	fmt.Printf("start to shutdown sessionGroup %p\n", this)
+func (AbaoSTR *sessionGroup) manager() {
+	AbaoSTR.shutdown.WaitBegin()
+	fmt.Printf("start to shutdown sessionGroup %p\n", AbaoSTR)
 
-	this.mng.CloseRead()
-	this.mng.CloseWrite()
+	AbaoSTR.mng.CloseRead()
+	AbaoSTR.mng.CloseWrite()
 
 	// 关闭数据连接
-	this.c.Shutdown()
+	AbaoSTR.c.Shutdown()
 	// 等待结束
-	this.c.WaitComplele()
+	AbaoSTR.c.WaitComplele()
 	// 关闭心跳 （务必在c的后面）
-	close(this.beatCh)
+	close(AbaoSTR.beatCh)
 	// 等待心跳结束
-	this.heartbeatShutdown.WaitComplete()
+	AbaoSTR.heartbeatShutdown.WaitComplete()
 
-	this.mng.Close()
+	AbaoSTR.mng.Close()
 	// 回收
-	this.shutdown.Complete()
+	AbaoSTR.shutdown.Complete()
 }
 
-func (this *sessionGroup) loop(network *Network) {
-	defer this.ShutdownAndRetry()
+func (AbaoSTR *sessionGroup) loop(network *Network) {
+	defer AbaoSTR.ShutdownAndRetry()
 
 	// 请求注册
 	uniqKey := utils.Magic()
@@ -287,10 +287,10 @@ func (this *sessionGroup) loop(network *Network) {
 		Version: utils.Version,
 		Type:    network.Topic,
 	}
-	msg.WriteMsg(this.mng, initMsg)
+	msg.WriteMsg(AbaoSTR.mng, initMsg)
 
 	// 确认回包
-	if err := msg.CheckResponse(this.mng, uniqKey, "OutRequest"); err != nil {
+	if err := msg.CheckResponse(AbaoSTR.mng, uniqKey, "OutRequest"); err != nil {
 		fmt.Println(err.Error())
 		return
 	}
@@ -298,7 +298,7 @@ func (this *sessionGroup) loop(network *Network) {
 	// 等待数据连接请求和心跳
 	for {
 		// 等待消息
-		d, tp, err := msg.ReadMsg(this.mng)
+		d, tp, err := msg.ReadMsg(AbaoSTR.mng)
 		if err != nil {
 			fmt.Printf("read message error [%s]\n", err.Error())
 			break
@@ -309,7 +309,7 @@ func (this *sessionGroup) loop(network *Network) {
 				fmt.Printf("invalid out resp type\n")
 				break
 			}
-			this.beatCh <- 1
+			AbaoSTR.beatCh <- 1
 			continue
 		}
 
@@ -350,14 +350,14 @@ func (this *sessionGroup) loop(network *Network) {
 				return
 			}
 
-			this.c.NewConnection(tcpConn, network)
+			AbaoSTR.c.NewConnection(tcpConn, network)
 		}()
 	}
 }
 
-func (this *sessionGroup) heartbeat() {
-	defer this.ShutdownAndRetry()
-	defer this.heartbeatShutdown.Complete()
+func (AbaoSTR *sessionGroup) heartbeat() {
+	defer AbaoSTR.ShutdownAndRetry()
+	defer AbaoSTR.heartbeatShutdown.Complete()
 
 	flag := false
 	for {
@@ -366,22 +366,22 @@ func (this *sessionGroup) heartbeat() {
 		}
 
 		select {
-		case _, ok := <-this.beatCh:
+		case _, ok := <-AbaoSTR.beatCh:
 			// 收到心跳回报
 			if !ok {
 				flag = true
 			}
-			this.lastPing = time.Now()
+			AbaoSTR.lastPing = time.Now()
 			break
 		case <-time.After(time.Millisecond * time.Duration(gConfig.HeartbeatInterval)):
 			// 检查心跳
-			if time.Since(this.lastPing) > time.Millisecond*time.Duration(gConfig.HeartbeatTimeout) {
+			if time.Since(AbaoSTR.lastPing) > time.Millisecond*time.Duration(gConfig.HeartbeatTimeout) {
 				fmt.Println("Lost heartbeat")
 				flag = true
 			}
 
 			// 发送心跳
-			msg.WriteMsg(this.mng, &msg.Ping{})
+			msg.WriteMsg(AbaoSTR.mng, &msg.Ping{})
 			break
 		}
 

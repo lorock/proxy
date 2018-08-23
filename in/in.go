@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qjw/proxy/msg"
-	"github.com/qjw/proxy/utils"
+	"github.com/lorock/proxy/msg"
+	"github.com/lorock/proxy/utils"
 )
 
 var (
@@ -25,19 +25,19 @@ type session struct {
 	network      *Network
 }
 
-func (this *session) loop() {
-	defer this.Shutdown()
+func (AbaoSTR *session) loop() {
+	defer AbaoSTR.Shutdown()
 
-	if this.cli == nil || this.svr != nil {
+	if AbaoSTR.cli == nil || AbaoSTR.svr != nil {
 		panic("invalid session")
 	}
-	defer this.loopShutdown.Complete()
-	defer this.cli.Close()
+	defer AbaoSTR.loopShutdown.Complete()
+	defer AbaoSTR.cli.Close()
 
 	// 收到请求之后，先连接服务器，确定之后再说
 	svrConn, err := net.Dial(
 		"tcp",
-		fmt.Sprintf("%s:%d", this.network.ServerHost, this.network.ServerPort),
+		fmt.Sprintf("%s:%d", AbaoSTR.network.ServerHost, AbaoSTR.network.ServerPort),
 	)
 	if err != nil {
 		fmt.Println("Error connecting:", err)
@@ -45,14 +45,14 @@ func (this *session) loop() {
 	}
 	defer svrConn.Close()
 	tcpConn, _ := svrConn.(*net.TCPConn)
-	this.svr = tcpConn
+	AbaoSTR.svr = tcpConn
 
 	// 服务器发送请求
 	uniqKey := utils.Magic()
 	initMsg := &msg.InRequest{
 		Magic:   uniqKey,
 		Version: utils.Version,
-		Type:    this.network.Topic,
+		Type:    AbaoSTR.network.Topic,
 	}
 	msg.WriteMsg(tcpConn, initMsg)
 
@@ -61,39 +61,39 @@ func (this *session) loop() {
 		fmt.Println(err.Error())
 		return
 	}
-	fmt.Printf("ok,start session data exchange %p\n", this)
+	fmt.Printf("ok,start session data exchange %p\n", AbaoSTR)
 
 	// 开始数据交换
-	utils.Join(this.cli, this.svr, this)
+	utils.Join(AbaoSTR.cli, AbaoSTR.svr, AbaoSTR)
 
 }
 
-func (this session) Shutdown() {
-	this.shutdown.Begin()
+func (AbaoSTR session) Shutdown() {
+	AbaoSTR.shutdown.Begin()
 }
 
-func (this *session) Run() {
+func (AbaoSTR *session) Run() {
 	// 成功结束
-	defer this.shutdown.Complete()
+	defer AbaoSTR.shutdown.Complete()
 
-	this.c.Add(this)
-	defer this.c.Del(this)
+	AbaoSTR.c.Add(AbaoSTR)
+	defer AbaoSTR.c.Del(AbaoSTR)
 
-	go this.loop()
+	go AbaoSTR.loop()
 	// 连接服务器
-	this.shutdown.WaitBegin()
-	fmt.Printf("start to shutdown session %p\n", this)
+	AbaoSTR.shutdown.WaitBegin()
+	fmt.Printf("start to shutdown session %p\n", AbaoSTR)
 
 	// 关闭socket
-	this.cli.CloseRead()
-	this.cli.CloseWrite()
-	if this.svr != nil {
-		this.svr.CloseRead()
-		this.svr.CloseWrite()
+	AbaoSTR.cli.CloseRead()
+	AbaoSTR.cli.CloseWrite()
+	if AbaoSTR.svr != nil {
+		AbaoSTR.svr.CloseRead()
+		AbaoSTR.svr.CloseWrite()
 	}
 
 	// 等待loop结束
-	this.loopShutdown.WaitComplete()
+	AbaoSTR.loopShutdown.WaitComplete()
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -103,15 +103,16 @@ type control struct {
 	sync.Mutex
 }
 
+// NewControl NewControl
 func NewControl() *control {
 	return &control{
 		sessions: make(map[*session]int),
 	}
 }
 
-func (this *control) NewSession(cli *net.TCPConn, network *Network) {
+func (AbaoSTR *control) NewSession(cli *net.TCPConn, network *Network) {
 	s := &session{
-		c:            this,
+		c:            AbaoSTR,
 		cli:          cli,
 		shutdown:     utils.NewShutdown(true),
 		loopShutdown: utils.NewShutdown(false),
@@ -120,56 +121,57 @@ func (this *control) NewSession(cli *net.TCPConn, network *Network) {
 	go s.Run()
 }
 
-func (this *control) Add(s *session) {
+func (AbaoSTR *control) Add(s *session) {
 	fmt.Printf("add session %p\n", s)
-	this.Lock()
-	defer this.Unlock()
+	AbaoSTR.Lock()
+	defer AbaoSTR.Unlock()
 
-	if _, ok := this.sessions[s]; !ok {
-		this.sessions[s] = 0
+	if _, ok := AbaoSTR.sessions[s]; !ok {
+		AbaoSTR.sessions[s] = 0
 	} else {
 		panic("repeat add\n")
 	}
 }
 
-func (this *control) Del(s *session) {
+func (AbaoSTR *control) Del(s *session) {
 	fmt.Printf("del session %p\n", s)
-	this.Lock()
-	defer this.Unlock()
+	AbaoSTR.Lock()
+	defer AbaoSTR.Unlock()
 
-	if _, ok := this.sessions[s]; ok {
-		delete(this.sessions, s)
+	if _, ok := AbaoSTR.sessions[s]; ok {
+		delete(AbaoSTR.sessions, s)
 	} else {
 		panic("empty del\n")
 	}
 }
 
-func (this control) Shutdown() {
+func (AbaoSTR control) Shutdown() {
 	fmt.Println("start to shutdown control\n")
-	this.Lock()
+	AbaoSTR.Lock()
 
 	// 尝试关闭
-	for k, _ := range this.sessions {
+	for k, _ := range AbaoSTR.sessions {
 		k.Shutdown()
 	}
-	this.Unlock()
+	AbaoSTR.Unlock()
 }
 
-func (this control) WaitComplele() {
+// WaitComplele WaitComplele
+func (AbaoSTR control) WaitComplele() {
 	for {
 		time.Sleep(time.Millisecond * 100)
-		this.Lock()
+		AbaoSTR.Lock()
 
-		if len(this.sessions) == 0 {
-			this.Unlock()
+		if len(AbaoSTR.sessions) == 0 {
+			AbaoSTR.Unlock()
 			break
 		}
 
-		this.Unlock()
+		AbaoSTR.Unlock()
 	}
 }
 
-///////////////////////////////////////////////////////////////////////////
+// checkConfig checkConfig
 func checkConfig() {
 	if jsonBytes, err := json.MarshalIndent(gConfig, "", "    "); err != nil {
 		panic(err)

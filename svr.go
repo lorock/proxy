@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/qjw/proxy/msg"
-	"github.com/qjw/proxy/utils"
+	"github.com/lorock/proxy/msg"
+	"github.com/lorock/proxy/utils"
 )
 
 var (
@@ -33,31 +33,31 @@ type tunnel struct {
 	readShutdown *utils.Shutdown // 关于read go routine的控制器
 }
 
-func (this tunnel) Type() string {
-	return this.m.Type
+func (AbaoSTR tunnel) Type() string {
+	return AbaoSTR.m.Type
 }
 
-func (this tunnel) RequestNewTunnel() {
-	this.out <- &msg.NewDataRequest{
+func (AbaoSTR tunnel) RequestNewTunnel() {
+	AbaoSTR.out <- &msg.NewDataRequest{
 		Magic: utils.Magic(),
-		Type:  this.m.Type,
+		Type:  AbaoSTR.m.Type,
 	}
 }
 
-func (this *tunnel) GetFreeTunnel() (conn *net.TCPConn, err error) {
+func (AbaoSTR *tunnel) GetFreeTunnel() (conn *net.TCPConn, err error) {
 	var ok bool
 	select {
-	case conn, ok = <-this.frees:
+	case conn, ok = <-AbaoSTR.frees:
 		if !ok {
 			err = fmt.Errorf("No proxy connections available, control is closing")
 			return
 		}
 	default:
 		fmt.Printf("No free tunnel in pool, requesting tunnel from control\n")
-		this.RequestNewTunnel()
+		AbaoSTR.RequestNewTunnel()
 
 		select {
-		case conn, ok = <-this.frees:
+		case conn, ok = <-AbaoSTR.frees:
 			if !ok {
 				err = fmt.Errorf("No proxy connections available, control is closing")
 				return
@@ -67,16 +67,16 @@ func (this *tunnel) GetFreeTunnel() (conn *net.TCPConn, err error) {
 			return
 		}
 	}
-	fmt.Printf("get a empty data conn %p from [%s]\n", conn, this.m.Type)
+	fmt.Printf("get a empty data conn %p from [%s]\n", conn, AbaoSTR.m.Type)
 	// 被弄走一个，提前再申请一个
-	this.RequestNewTunnel()
+	AbaoSTR.RequestNewTunnel()
 	return
 }
 
-func (this *tunnel) RegisterDataConn(conn *net.TCPConn) error {
+func (AbaoSTR *tunnel) RegisterDataConn(conn *net.TCPConn) error {
 	select {
-	case this.frees <- conn:
-		fmt.Printf("registered data conn %p to [%s]\n", conn, this.m.Type)
+	case AbaoSTR.frees <- conn:
+		fmt.Printf("registered data conn %p to [%s]\n", conn, AbaoSTR.m.Type)
 		return nil
 	default:
 		fmt.Printf("frees buffer is full, discarding.")
@@ -84,60 +84,60 @@ func (this *tunnel) RegisterDataConn(conn *net.TCPConn) error {
 	}
 }
 
-func (this *tunnel) Add(s *proxy) {
+func (AbaoSTR *tunnel) Add(s *proxy) {
 	fmt.Printf("add proxy to tunnel %p\n", s)
-	this.proxyLock.Lock()
-	defer this.proxyLock.Unlock()
+	AbaoSTR.proxyLock.Lock()
+	defer AbaoSTR.proxyLock.Unlock()
 
-	if _, ok := this.proxies[s]; !ok {
-		this.proxies[s] = 0
+	if _, ok := AbaoSTR.proxies[s]; !ok {
+		AbaoSTR.proxies[s] = 0
 	} else {
 		panic("repeat add to tunnel")
 	}
 }
 
-func (this *tunnel) Del(s *proxy) {
+func (AbaoSTR *tunnel) Del(s *proxy) {
 	fmt.Printf("del proxy from tunnel %p\n", s)
-	this.proxyLock.Lock()
-	defer this.proxyLock.Unlock()
+	AbaoSTR.proxyLock.Lock()
+	defer AbaoSTR.proxyLock.Unlock()
 
-	if _, ok := this.proxies[s]; ok {
-		delete(this.proxies, s)
+	if _, ok := AbaoSTR.proxies[s]; ok {
+		delete(AbaoSTR.proxies, s)
 	} else {
 		panic("empty del from tunnel")
 	}
 }
 
-func (this *tunnel) loop() {
-	if this.mng == nil {
+func (AbaoSTR *tunnel) loop() {
+	if AbaoSTR.mng == nil {
 		panic("invalid tunnel")
 	}
-	defer this.loopShutdown.Complete()
-	defer this.Shutdown()
+	defer AbaoSTR.loopShutdown.Complete()
+	defer AbaoSTR.Shutdown()
 
 	// write messages to the control channel
-	for m := range this.out {
-		if err := msg.WriteMsg(this.mng, m); err != nil {
+	for m := range AbaoSTR.out {
+		if err := msg.WriteMsg(AbaoSTR.mng, m); err != nil {
 			fmt.Println("write error ", err)
 			break
 		}
 	}
 }
 
-func (this tunnel) read() {
-	if this.mng == nil {
+func (AbaoSTR tunnel) read() {
+	if AbaoSTR.mng == nil {
 		panic("invalid tunnel")
 	}
-	defer this.readShutdown.Complete()
-	defer this.Shutdown()
+	defer AbaoSTR.readShutdown.Complete()
+	defer AbaoSTR.Shutdown()
 
 	for {
-		_, _, err := msg.ReadMsg(this.mng)
+		_, _, err := msg.ReadMsg(AbaoSTR.mng)
 
-		d, tp, err := msg.ReadMsg(this.mng)
+		d, tp, err := msg.ReadMsg(AbaoSTR.mng)
 		if err != nil {
 			if err == io.EOF {
-				fmt.Printf("tunnel %p read end\n", &this)
+				fmt.Printf("tunnel %p read end\n", &AbaoSTR)
 			} else {
 				fmt.Println("Error to read message because of ", err)
 			}
@@ -150,57 +150,57 @@ func (this tunnel) read() {
 				fmt.Printf("invalid out resp type\n")
 				break
 			}
-			msg.WriteMsg(this.mng, &msg.Pong{})
+			msg.WriteMsg(AbaoSTR.mng, &msg.Pong{})
 		}
 	}
 }
 
-func (this tunnel) Shutdown() {
-	this.shutdown.Begin()
+func (AbaoSTR tunnel) Shutdown() {
+	AbaoSTR.shutdown.Begin()
 }
 
-func (this *tunnel) Run() {
+func (AbaoSTR *tunnel) Run() {
 
-	this.r.Add(this)
-	defer this.r.Del(this)
+	AbaoSTR.r.Add(AbaoSTR)
+	defer AbaoSTR.r.Del(AbaoSTR)
 
-	go this.loop()
-	go this.read()
+	go AbaoSTR.loop()
+	go AbaoSTR.read()
 
 	// 事先请求一个data通道
-	this.RequestNewTunnel()
+	AbaoSTR.RequestNewTunnel()
 
 	// 等待结束指令
-	this.shutdown.WaitBegin()
-	fmt.Printf("start to shutdown tunnel %p\n", this)
+	AbaoSTR.shutdown.WaitBegin()
+	fmt.Printf("start to shutdown tunnel %p\n", AbaoSTR)
 
 	// 关闭接收控制指令的ch
-	close(this.out)
+	close(AbaoSTR.out)
 
 	// 关闭socket
-	this.mng.CloseRead()
-	this.mng.CloseWrite()
-	this.mng.Close()
+	AbaoSTR.mng.CloseRead()
+	AbaoSTR.mng.CloseWrite()
+	AbaoSTR.mng.Close()
 
 	// 关闭空闲的连接
-	close(this.frees)
-	for p := range this.frees {
-		fmt.Printf("close free connection %p from tunnel %p\n", p, this)
+	close(AbaoSTR.frees)
+	for p := range AbaoSTR.frees {
+		fmt.Printf("close free connection %p from tunnel %p\n", p, AbaoSTR)
 		p.Close()
 	}
 
 	// 关闭关联的proxy
-	this.proxyLock.Lock()
-	for t, _ := range this.proxies {
-		fmt.Printf("start to shutdown proxy %p from tunnel %p\n", t, this)
+	AbaoSTR.proxyLock.Lock()
+	for t, _ := range AbaoSTR.proxies {
+		fmt.Printf("start to shutdown proxy %p from tunnel %p\n", t, AbaoSTR)
 		t.Shutdown()
 	}
-	this.proxyLock.Unlock()
+	AbaoSTR.proxyLock.Unlock()
 
 	// 等待go routine结束
-	this.loopShutdown.WaitComplete()
-	this.readShutdown.WaitComplete()
-	this.shutdown.Complete()
+	AbaoSTR.loopShutdown.WaitComplete()
+	AbaoSTR.readShutdown.WaitComplete()
+	AbaoSTR.shutdown.Complete()
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -216,9 +216,9 @@ func NewControlRegistry() *ControlRegistry {
 	}
 }
 
-func (this *ControlRegistry) NewTunnel(mng *net.TCPConn, m *msg.OutRequest) {
+func (AbaoSTR *ControlRegistry) NewTunnel(mng *net.TCPConn, m *msg.OutRequest) {
 	t := &tunnel{
-		r:            this,
+		r:            AbaoSTR,
 		mng:          mng,
 		m:            m,
 		proxies:      make(map[*proxy]int),
@@ -231,29 +231,29 @@ func (this *ControlRegistry) NewTunnel(mng *net.TCPConn, m *msg.OutRequest) {
 	go t.Run()
 }
 
-func (this *ControlRegistry) Add(s *tunnel) {
+func (AbaoSTR *ControlRegistry) Add(s *tunnel) {
 	fmt.Printf("add tunnel %p named [%s]\n", s, s.m.Type)
-	this.Lock()
-	defer this.Unlock()
+	AbaoSTR.Lock()
+	defer AbaoSTR.Unlock()
 
 	tp := s.Type()
-	if t, ok := this.tunnels[tp]; ok {
+	if t, ok := AbaoSTR.tunnels[tp]; ok {
 		// 关闭旧的
 		t.Shutdown()
 	}
-	this.tunnels[tp] = s
+	AbaoSTR.tunnels[tp] = s
 }
 
-func (this *ControlRegistry) Del(s *tunnel) {
+func (AbaoSTR *ControlRegistry) Del(s *tunnel) {
 	fmt.Printf("del tunnel %p\n", s)
-	this.Lock()
-	defer this.Unlock()
+	AbaoSTR.Lock()
+	defer AbaoSTR.Unlock()
 
 	tp := s.Type()
-	if v, ok := this.tunnels[tp]; ok {
+	if v, ok := AbaoSTR.tunnels[tp]; ok {
 		if v == s {
 			fmt.Printf("delete tunnel %p from ControlRegistry\n", s)
-			delete(this.tunnels, tp)
+			delete(AbaoSTR.tunnels, tp)
 		} else {
 			fmt.Printf("delete different tunnel todo(%p|%p)current ControlRegistry\n", s, v)
 		}
@@ -262,35 +262,35 @@ func (this *ControlRegistry) Del(s *tunnel) {
 	}
 }
 
-func (this *ControlRegistry) Get(tp string) *tunnel {
-	this.RLock()
-	defer this.RUnlock()
-	return this.tunnels[tp]
+func (AbaoSTR *ControlRegistry) Get(tp string) *tunnel {
+	AbaoSTR.RLock()
+	defer AbaoSTR.RUnlock()
+	return AbaoSTR.tunnels[tp]
 }
 
-func (this ControlRegistry) Shutdown() {
+func (AbaoSTR ControlRegistry) Shutdown() {
 	fmt.Println("start to shutdown ControlRegistry")
-	this.Lock()
-	defer this.Unlock()
+	AbaoSTR.Lock()
+	defer AbaoSTR.Unlock()
 
 	// 尝试关闭
-	for _, v := range this.tunnels {
+	for _, v := range AbaoSTR.tunnels {
 		v.Shutdown()
 	}
 
 }
 
-func (this ControlRegistry) WaitComplele() {
+func (AbaoSTR ControlRegistry) WaitComplele() {
 	for {
 		time.Sleep(time.Millisecond * 100)
-		this.Lock()
+		AbaoSTR.Lock()
 
-		if len(this.tunnels) == 0 {
-			this.Unlock()
+		if len(AbaoSTR.tunnels) == 0 {
+			AbaoSTR.Unlock()
 			break
 		}
 
-		this.Unlock()
+		AbaoSTR.Unlock()
 	}
 }
 
@@ -305,95 +305,95 @@ type proxy struct {
 	loopShutdown *utils.Shutdown
 }
 
-func (this *proxy) loop(c *ControlRegistry) {
-	if this.cli == nil || this.svr != nil {
+func (AbaoSTR *proxy) loop(c *ControlRegistry) {
+	if AbaoSTR.cli == nil || AbaoSTR.svr != nil {
 		panic("invalid proxy")
 	}
-	defer this.loopShutdown.Complete()
-	defer this.cli.Close()
-	defer this.Shutdown()
+	defer AbaoSTR.loopShutdown.Complete()
+	defer AbaoSTR.cli.Close()
+	defer AbaoSTR.Shutdown()
 
 	// 回复报文
 	initMsg := &msg.Response{
-		Magic:   this.m.Magic,
+		Magic:   AbaoSTR.m.Magic,
 		Request: "InRequest",
 		Message: "",
 	}
 
-	if this.m.Version != utils.Version {
-		initMsg.Message = fmt.Sprintf("invalid version [%s|%s]", this.m.Version, utils.Version)
-		msg.WriteMsg(this.cli, initMsg)
+	if AbaoSTR.m.Version != utils.Version {
+		initMsg.Message = fmt.Sprintf("invalid version [%s|%s]", AbaoSTR.m.Version, utils.Version)
+		msg.WriteMsg(AbaoSTR.cli, initMsg)
 		return
 	}
 
 	// 找到mng tunnel
-	t := c.Get(this.m.Type)
+	t := c.Get(AbaoSTR.m.Type)
 	if t == nil {
-		initMsg.Message = fmt.Sprintf("can not find tunnel [%s]", this.m.Type)
-		msg.WriteMsg(this.cli, initMsg)
+		initMsg.Message = fmt.Sprintf("can not find tunnel [%s]", AbaoSTR.m.Type)
+		msg.WriteMsg(AbaoSTR.cli, initMsg)
 		return
 	}
-	t.Add(this)
-	defer t.Del(this)
+	t.Add(AbaoSTR)
+	defer t.Del(AbaoSTR)
 
 	// 获得空闲的连接
 	newConn, err := t.GetFreeTunnel()
 	if err != nil || newConn == nil {
 		fmt.Println(err.Error())
 		initMsg.Message = err.Error()
-		msg.WriteMsg(this.cli, initMsg)
+		msg.WriteMsg(AbaoSTR.cli, initMsg)
 		return
 	}
-	this.svr = newConn
-	defer this.svr.Close()
+	AbaoSTR.svr = newConn
+	defer AbaoSTR.svr.Close()
 
 	// 上游服务器发送请求，用于激活data传输
 	uniqKey := utils.Magic()
 	msg.WriteMsg(newConn, &msg.DataActiveRequest{
 		Magic: uniqKey,
-		Type:  this.m.Type,
+		Type:  AbaoSTR.m.Type,
 	})
 
 	// 等待响应
-	if err := msg.CheckResponse(this.svr, uniqKey, "DataActiveRequest"); err != nil {
+	if err := msg.CheckResponse(AbaoSTR.svr, uniqKey, "DataActiveRequest"); err != nil {
 		fmt.Println(err.Error())
 		initMsg.Message = err.Error()
-		msg.WriteMsg(this.cli, initMsg)
+		msg.WriteMsg(AbaoSTR.cli, initMsg)
 		return
 	}
 
-	msg.WriteMsg(this.cli, initMsg)
-	fmt.Printf("ok,active proxy data exchange %p\n", this)
+	msg.WriteMsg(AbaoSTR.cli, initMsg)
+	fmt.Printf("ok,active proxy data exchange %p\n", AbaoSTR)
 
 	// 开始数据交换
-	utils.Join(this.cli, this.svr, this)
+	utils.Join(AbaoSTR.cli, AbaoSTR.svr, AbaoSTR)
 }
 
-func (this proxy) Shutdown() {
-	this.shutdown.Begin()
+func (AbaoSTR proxy) Shutdown() {
+	AbaoSTR.shutdown.Begin()
 }
 
-func (this *proxy) Run(c *ControlRegistry) {
-	defer this.shutdown.Complete()
+func (AbaoSTR *proxy) Run(c *ControlRegistry) {
+	defer AbaoSTR.shutdown.Complete()
 
-	this.r.Add(this)
-	defer this.r.Del(this)
+	AbaoSTR.r.Add(AbaoSTR)
+	defer AbaoSTR.r.Del(AbaoSTR)
 
-	go this.loop(c)
+	go AbaoSTR.loop(c)
 	// 连接服务器
-	this.shutdown.WaitBegin()
-	fmt.Printf("start to shutdown proxy %p\n", this)
+	AbaoSTR.shutdown.WaitBegin()
+	fmt.Printf("start to shutdown proxy %p\n", AbaoSTR)
 
 	// 关闭socket
-	this.cli.CloseRead()
-	this.cli.CloseWrite()
-	if this.svr != nil {
-		this.svr.CloseRead()
-		this.svr.CloseWrite()
+	AbaoSTR.cli.CloseRead()
+	AbaoSTR.cli.CloseWrite()
+	if AbaoSTR.svr != nil {
+		AbaoSTR.svr.CloseRead()
+		AbaoSTR.svr.CloseWrite()
 	}
 
 	// 等待loop结束
-	this.loopShutdown.WaitComplete()
+	AbaoSTR.loopShutdown.WaitComplete()
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -409,12 +409,12 @@ func NewProxyRegistry() *ProxyRegistry {
 	}
 }
 
-func (this *ProxyRegistry) NewProxy(
+func (AbaoSTR *ProxyRegistry) NewProxy(
 	cli *net.TCPConn,
 	m *msg.InRequest,
 	c *ControlRegistry) {
 	p := &proxy{
-		r:            this,
+		r:            AbaoSTR,
 		cli:          cli,
 		m:            m,
 		shutdown:     utils.NewShutdown(true),
@@ -423,53 +423,53 @@ func (this *ProxyRegistry) NewProxy(
 	go p.Run(c)
 }
 
-func (this *ProxyRegistry) Add(s *proxy) {
+func (AbaoSTR *ProxyRegistry) Add(s *proxy) {
 	fmt.Printf("add proxy %p\n", s)
-	this.Lock()
-	defer this.Unlock()
+	AbaoSTR.Lock()
+	defer AbaoSTR.Unlock()
 
-	if _, ok := this.proxies[s]; !ok {
-		this.proxies[s] = 0
+	if _, ok := AbaoSTR.proxies[s]; !ok {
+		AbaoSTR.proxies[s] = 0
 	} else {
 		panic("repeat add\n")
 	}
 }
 
-func (this *ProxyRegistry) Del(s *proxy) {
+func (AbaoSTR *ProxyRegistry) Del(s *proxy) {
 	fmt.Printf("del proxy %p\n", s)
-	this.Lock()
-	defer this.Unlock()
+	AbaoSTR.Lock()
+	defer AbaoSTR.Unlock()
 
-	if _, ok := this.proxies[s]; ok {
-		delete(this.proxies, s)
+	if _, ok := AbaoSTR.proxies[s]; ok {
+		delete(AbaoSTR.proxies, s)
 	} else {
 		panic("empty del\n")
 	}
 }
 
-func (this ProxyRegistry) Shutdown() {
+func (AbaoSTR ProxyRegistry) Shutdown() {
 	fmt.Println("start to shutdown ProxyRegistry")
-	this.Lock()
-	defer this.Unlock()
+	AbaoSTR.Lock()
+	defer AbaoSTR.Unlock()
 
 	// 尝试关闭
-	for k, _ := range this.proxies {
+	for k, _ := range AbaoSTR.proxies {
 		k.Shutdown()
 	}
 
 }
 
-func (this ProxyRegistry) WaitComplele() {
+func (AbaoSTR ProxyRegistry) WaitComplele() {
 	for {
 		time.Sleep(time.Millisecond * 100)
-		this.Lock()
+		AbaoSTR.Lock()
 
-		if len(this.proxies) == 0 {
-			this.Unlock()
+		if len(AbaoSTR.proxies) == 0 {
+			AbaoSTR.Unlock()
 			break
 		}
 
-		this.Unlock()
+		AbaoSTR.Unlock()
 	}
 }
 
